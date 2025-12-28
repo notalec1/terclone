@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>JS Terraria - Phase 2</title>
+    <title>JS Terraria - v3</title>
     <style>
         body {
             margin: 0;
@@ -13,16 +13,59 @@
         }
         canvas { display: block; }
 
-        /* UI Overlay */
-        #ui-layer {
+        /* --- UI: HELP BUTTON & CARD --- */
+        #info-toggle {
             position: absolute;
-            top: 10px; left: 10px;
-            color: white;
-            text-shadow: 2px 2px 0 #000;
-            pointer-events: none;
+            top: 10px;
+            left: 10px;
+            width: 40px;
+            height: 40px;
+            background: rgba(0, 0, 0, 0.6);
+            border: 2px solid #fff;
+            color: #fff;
+            border-radius: 50%;
+            font-size: 24px;
+            font-weight: bold;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            z-index: 100;
+            transition: 0.2s;
         }
-        
-        /* Inventory Toolbar */
+        #info-toggle:hover {
+            background: #444;
+            transform: scale(1.1);
+        }
+
+        #info-card {
+            position: absolute;
+            top: 60px;
+            left: 10px;
+            width: 280px;
+            background: rgba(0, 0, 0, 0.85);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #555;
+            display: none; /* Hidden by default */
+            z-index: 99;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+        #info-card h2 { margin-top: 0; color: #ffd700; font-size: 18px; }
+        #info-card p { font-size: 14px; line-height: 1.4; color: #ddd; }
+        #info-card kbd {
+            background: #333;
+            padding: 2px 6px;
+            border-radius: 4px;
+            border: 1px solid #555;
+            font-family: monospace;
+            font-weight: bold;
+            color: #fff;
+        }
+        #info-card.visible { display: block; }
+
+        /* --- TOOLBAR --- */
         #toolbar {
             position: absolute;
             bottom: 20px; left: 50%;
@@ -41,29 +84,48 @@
             cursor: pointer;
             display: flex; justify-content: center; align-items: center;
             transition: 0.1s;
+            position: relative;
         }
         .slot.active {
             border-color: #ffd700;
             background-color: #444;
             transform: translateY(-5px);
         }
-        .slot canvas {
-            width: 32px; height: 32px; /* Scale the texture icon */
+        .slot canvas { width: 32px; height: 32px; }
+        .slot-num {
+            position: absolute; bottom: 2px; right: 2px;
+            font-size: 10px; color: #aaa;
         }
     </style>
 </head>
 <body>
 
-    <div id="ui-layer">
-        <h1>JS Terraria v2</h1>
-        <p>WASD to Move | Left Click: Mine | Right Click: Place</p>
-        <p><strong>New:</strong> Press 6 for Torches to light up caves!</p>
+    <!-- Toggle Button -->
+    <div id="info-toggle" onclick="toggleInfo()">?</div>
+
+    <!-- Expandable Info Card -->
+    <div id="info-card">
+        <h2>Controls & Help</h2>
+        <p><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> to Move & Jump</p>
+        <p><kbd>Left Click</kbd> to Mine blocks</p>
+        <p><kbd>Right Click</kbd> to Place blocks</p>
+        <p><kbd>1</kbd> - <kbd>6</kbd> to Select items</p>
+        <hr style="border-color: #444;">
+        <p><strong>Tips:</strong></p>
+        <p>• Use Torches (<kbd>6</kbd>) to explore caves.</p>
+        <p>• Mining removes the foreground block.</p>
+        <p>• Darker background walls means you are underground.</p>
     </div>
 
     <div id="toolbar"></div>
     <canvas id="gameCanvas"></canvas>
 
 <script>
+    // --- UI LOGIC ---
+    function toggleInfo() {
+        document.getElementById('info-card').classList.toggle('visible');
+    }
+
     // --- CONFIGURATION ---
     const TILE_SIZE = 32;
     const CHUNK_WIDTH = 120;
@@ -72,7 +134,7 @@
     const PLAYER_SPEED = 5;
     const JUMP_FORCE = -9;
 
-    // --- IDS ---
+    // --- BLOCKS ---
     const BLOCKS = {
         AIR: 0,
         DIRT: 1,
@@ -84,39 +146,32 @@
         BEDROCK: 99
     };
 
-    // --- ASSETS GENERATOR (Procedural Textures) ---
-    // We create canvases for textures so we don't need external images
+    // --- ASSETS (Procedural Textures) ---
     const TEXTURES = {};
     
-    function createTexture(type, color, noiseIntensity) {
+    function createTexture(type, color) {
         const c = document.createElement('canvas');
         c.width = TILE_SIZE; c.height = TILE_SIZE;
         const ctx = c.getContext('2d');
         
-        // Base color
         ctx.fillStyle = color;
         ctx.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
         
-        // Add Noise
+        // Noise
         for(let i=0; i<40; i++) {
             ctx.fillStyle = Math.random() > 0.5 ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
             const s = Math.random() * 4 + 2;
             ctx.fillRect(Math.random()*TILE_SIZE, Math.random()*TILE_SIZE, s, s);
         }
 
-        // Specific details
         if(type === 'grass') {
             ctx.fillStyle = '#4caf50';
-            ctx.fillRect(0,0,TILE_SIZE, 8); // Green top
-            for(let i=0; i<10; i++) {
-                ctx.fillRect(Math.random()*28, 6, 4, 4); // Drips
-            }
+            ctx.fillRect(0,0,TILE_SIZE, 8);
+            for(let i=0; i<10; i++) ctx.fillRect(Math.random()*28, 6, 4, 4);
         }
         if(type === 'wood') {
             ctx.fillStyle = 'rgba(0,0,0,0.1)';
-            ctx.fillRect(4, 0, 4, 32);
-            ctx.fillRect(14, 0, 4, 32);
-            ctx.fillRect(24, 0, 4, 32);
+            ctx.fillRect(4, 0, 4, 32); ctx.fillRect(14, 0, 4, 32); ctx.fillRect(24, 0, 4, 32);
         }
         if(type === 'leaves') {
             ctx.fillStyle = '#2e7d32';
@@ -125,51 +180,45 @@
         }
         if(type === 'torch') {
             ctx.clearRect(0,0,32,32);
-            ctx.fillStyle = '#8B4513';
-            ctx.fillRect(14, 10, 4, 10); // stick
-            ctx.fillStyle = '#FF4500';
-            ctx.fillRect(12, 6, 8, 8); // flame center
-            ctx.fillStyle = '#FFD700';
-            ctx.fillRect(14, 8, 4, 4); // flame core
+            ctx.fillStyle = '#8B4513'; ctx.fillRect(14, 10, 4, 10);
+            ctx.fillStyle = '#FF4500'; ctx.fillRect(12, 6, 8, 8);
+            ctx.fillStyle = '#FFD700'; ctx.fillRect(14, 8, 4, 4);
         }
-
         return c;
     }
 
-    // Generate the textures on load
     function initTextures() {
-        TEXTURES[BLOCKS.DIRT] = createTexture('dirt', '#5d4037', 0.2);
-        TEXTURES[BLOCKS.GRASS] = createTexture('grass', '#5d4037', 0.2);
-        TEXTURES[BLOCKS.STONE] = createTexture('stone', '#757575', 0.3);
-        TEXTURES[BLOCKS.WOOD] = createTexture('wood', '#795548', 0.1);
-        TEXTURES[BLOCKS.LEAVES] = createTexture('leaves', '#2e7d32', 0);
-        TEXTURES[BLOCKS.BEDROCK] = createTexture('bedrock', '#222', 0.5);
-        TEXTURES[BLOCKS.TORCH] = createTexture('torch', '#fff', 0);
+        TEXTURES[BLOCKS.DIRT] = createTexture('dirt', '#5d4037');
+        TEXTURES[BLOCKS.GRASS] = createTexture('grass', '#5d4037');
+        TEXTURES[BLOCKS.STONE] = createTexture('stone', '#757575');
+        TEXTURES[BLOCKS.WOOD] = createTexture('wood', '#795548');
+        TEXTURES[BLOCKS.LEAVES] = createTexture('leaves', '#2e7d32');
+        TEXTURES[BLOCKS.BEDROCK] = createTexture('bedrock', '#222');
+        TEXTURES[BLOCKS.TORCH] = createTexture('torch', '#fff');
     }
 
-    // --- STATE ---
+    // --- GAME STATE ---
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
     
     let world = [];
-    let walls = []; // Background walls
-    let lightMap = []; // Lighting values (0.0 to 1.0)
+    let walls = []; 
+    let lightMap = [];
     
     let camera = { x: 0, y: 0 };
     let mouse = { x: 0, y: 0 };
     let selectedBlock = BLOCKS.DIRT;
     
-    const player = { x: 0, y: 0, width: 20, height: 50, vx: 0, vy: 0, grounded: false };
+    const player = { x: 0, y: 0, width: 20, height: 48, vx: 0, vy: 0, grounded: false };
     const keys = { left: false, right: false, up: false };
 
-    // --- INITIALIZATION ---
+    // --- INIT ---
     function init() {
         initTextures();
         resize();
         generateWorld();
         createToolbar();
         
-        // Player Start
         player.x = (CHUNK_WIDTH * TILE_SIZE) / 2;
         player.y = 10 * TILE_SIZE;
         
@@ -177,13 +226,14 @@
         window.addEventListener('keydown', e => handleKey(e, true));
         window.addEventListener('keyup', e => handleKey(e, false));
         window.addEventListener('mousemove', e => {
-            const rect = canvas.getBoundingClientRect();
-            mouse.x = e.clientX - rect.left;
-            mouse.y = e.clientY - rect.top;
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
         });
         window.addEventListener('mousedown', handleMouseDown);
         window.addEventListener('contextmenu', e => e.preventDefault());
         
+        // Initial lighting pass
+        updateLighting(true);
         loop();
     }
 
@@ -206,91 +256,81 @@
                 selectedBlock = id;
             };
             
-            // Append icon
             const icon = document.createElement('canvas');
             icon.width = 32; icon.height = 32;
-            const ictx = icon.getContext('2d');
-            ictx.drawImage(TEXTURES[id], 0, 0);
-            slot.appendChild(icon);
+            icon.getContext('2d').drawImage(TEXTURES[id], 0, 0);
             
-            // Keyboard shortcut hint
             const num = document.createElement('span');
-            num.style.position = 'absolute';
-            num.style.bottom = '2px';
-            num.style.right = '2px';
-            num.style.fontSize = '10px';
-            num.style.color = 'white';
+            num.className = 'slot-num';
             num.innerText = i + 1;
+            
+            slot.appendChild(icon);
             slot.appendChild(num);
-
             toolbar.appendChild(slot);
         });
     }
 
-    // --- WORLD GEN ---
+    // --- GENERATION ---
     function generateWorld() {
-        world = []; walls = []; lightMap = [];
         const groundLevel = 25;
-
         for (let x = 0; x < CHUNK_WIDTH; x++) {
             world[x] = []; walls[x] = []; lightMap[x] = [];
             const surfaceY = groundLevel + Math.floor(Math.sin(x/6)*4) + Math.floor(Math.cos(x/20)*6);
             
             for (let y = 0; y < CHUNK_HEIGHT; y++) {
-                lightMap[x][y] = 0; // Reset light
+                // Initialize Light: 1.0 for sky/air, 0.0 for underground
+                lightMap[x][y] = (y < surfaceY) ? 1.0 : 0.0;
                 
-                // Walls generation (Background)
-                if (y > surfaceY + 1) {
-                    walls[x][y] = (y > surfaceY + 10) ? BLOCKS.STONE : BLOCKS.DIRT;
-                } else {
-                    walls[x][y] = BLOCKS.AIR;
-                }
+                // Walls
+                walls[x][y] = (y > surfaceY + 1) ? BLOCKS.DIRT : BLOCKS.AIR;
+                if (y > surfaceY + 10) walls[x][y] = BLOCKS.STONE;
 
-                // Blocks generation (Foreground)
-                if (y >= CHUNK_HEIGHT - 2) {
-                    world[x][y] = BLOCKS.BEDROCK;
-                } else if (y >= surfaceY) {
+                // Blocks
+                if (y >= CHUNK_HEIGHT - 2) world[x][y] = BLOCKS.BEDROCK;
+                else if (y >= surfaceY) {
                     if (y === surfaceY) world[x][y] = BLOCKS.GRASS;
                     else if (y > surfaceY + 8 && Math.random() > 0.08) world[x][y] = BLOCKS.STONE;
                     else if (Math.random() > 0.02) world[x][y] = BLOCKS.DIRT;
-                    else world[x][y] = BLOCKS.AIR; // Caves
+                    else world[x][y] = BLOCKS.AIR;
                 } else {
                     world[x][y] = BLOCKS.AIR;
                 }
             }
-            // Trees
+            // Simple Trees
             if (x > 5 && x < CHUNK_WIDTH-5 && world[x][surfaceY] === BLOCKS.GRASS && Math.random() < 0.1) {
                 const h = 4 + Math.floor(Math.random()*4);
                 for(let i=1; i<=h; i++) world[x][surfaceY-i] = BLOCKS.WOOD;
                 for(let lx=x-2; lx<=x+2; lx++) {
                     for(let ly=surfaceY-h-2; ly<=surfaceY-h; ly++) {
-                        if(Math.abs(lx-x)+Math.abs(ly-(surfaceY-h)) < 4 && world[lx][ly]===BLOCKS.AIR) 
-                            world[lx][ly] = BLOCKS.LEAVES;
+                         if(Math.abs(lx-x)+Math.abs(ly-(surfaceY-h))<4) world[lx][ly] = BLOCKS.LEAVES;
                     }
                 }
             }
         }
     }
 
-    // --- LOGIC ---
+    // --- GAME LOOP ---
     function update() {
-        // Physics
+        // Horizontal
         if (keys.right) player.vx += 0.5;
         if (keys.left) player.vx -= 0.5;
         player.vx *= 0.9;
+        
+        // Vertical
         player.vy = Math.min(player.vy + GRAVITY, 12);
         
         movePlayer(player.vx, 0);
         movePlayer(0, player.vy);
 
-        // Update Camera
+        // Camera
         camera.x = player.x - canvas.width/2;
         camera.y = player.y - canvas.height/2;
+        
+        // Clamp Camera
         camera.x = Math.max(0, Math.min(camera.x, CHUNK_WIDTH*TILE_SIZE - canvas.width));
         camera.y = Math.max(0, Math.min(camera.y, CHUNK_HEIGHT*TILE_SIZE - canvas.height));
 
-        // Update Lighting (Only around player to save CPU)
-        updateLighting();
+        updateLighting(false);
     }
 
     function movePlayer(vx, vy) {
@@ -316,64 +356,79 @@
         }
     }
 
-    function updateLighting() {
-        // Reset visible area light map
-        const startX = Math.floor(camera.x / TILE_SIZE) - 5;
-        const endX = startX + Math.floor(canvas.width / TILE_SIZE) + 10;
-        const startY = Math.floor(camera.y / TILE_SIZE) - 5;
-        const endY = startY + Math.floor(canvas.height / TILE_SIZE) + 10;
+    // --- LIGHTING SYSTEM (FIXED) ---
+    function updateLighting(forceAll) {
+        // If forceAll is true (startup), calc whole world. Otherwise only screen.
+        let startX = forceAll ? 0 : Math.floor(camera.x / TILE_SIZE) - 5;
+        let endX = forceAll ? CHUNK_WIDTH : startX + Math.floor(canvas.width / TILE_SIZE) + 10;
+        let startY = forceAll ? 0 : Math.floor(camera.y / TILE_SIZE) - 5;
+        let endY = forceAll ? CHUNK_HEIGHT : startY + Math.floor(canvas.height / TILE_SIZE) + 10;
+        
+        // Bounds checking
+        startX = Math.max(0, startX);
+        endX = Math.min(CHUNK_WIDTH, endX);
+        startY = Math.max(0, startY);
+        endY = Math.min(CHUNK_HEIGHT, endY);
 
-        // BFS Queue for light propagation
         let queue = [];
 
-        for (let x = Math.max(0, startX); x < Math.min(CHUNK_WIDTH, endX); x++) {
-            for (let y = Math.max(0, startY); y < Math.min(CHUNK_HEIGHT, endY); y++) {
-                // Sun checks
-                if (world[x][y] === BLOCKS.AIR && walls[x][y] === BLOCKS.AIR) {
-                    // If it's open sky background, full light
+        // 1. Identify Light Sources
+        // We iterate the X range, but for Y we must check higher to catch sunlight
+        for (let x = startX; x < endX; x++) {
+            // Find Topmost Sunlight Source for this column
+            // (In a real game we trace rays, here we cheat: if background is AIR, it's sunny)
+            for (let y = startY; y < endY; y++) {
+                // Reset light for this frame
+                lightMap[x][y] = 0; 
+
+                // Is it open air background? (Sunlight)
+                if (walls[x][y] === BLOCKS.AIR) {
                     lightMap[x][y] = 1.0;
-                    queue.push({x, y, intensity: 1.0});
-                } else if (world[x][y] === BLOCKS.TORCH) {
-                    // Torches emit max light
-                    lightMap[x][y] = 1.2; // Slightly brighter than sun
-                    queue.push({x, y, intensity: 1.2});
-                } else {
-                    lightMap[x][y] = 0;
+                    queue.push({x, y, lvl: 1.0});
+                }
+                // Is it a Torch?
+                else if (world[x][y] === BLOCKS.TORCH) {
+                    lightMap[x][y] = 1.2;
+                    queue.push({x, y, lvl: 1.2});
                 }
             }
         }
 
-        // Propagate Light
-        const dirs = [[0,1], [0,-1], [1,0], [-1,0]];
+        // 2. BFS Flood Fill
         let head = 0;
+        const dirs = [[0,1], [0,-1], [1,0], [-1,0]];
+        
         while(head < queue.length) {
-            const {x, y, intensity} = queue[head++];
-            if (intensity <= 0) continue;
+            const {x, y, lvl} = queue[head++];
+            if (lvl <= 0) continue;
 
-            const dropoff = 0.1; // How fast light fades
-            
+            const decay = 0.1; // Light falls off by 0.1 per block
+
             for (let d of dirs) {
-                const nx = x + d[0], ny = y + d[1];
+                const nx = x + d[0];
+                const ny = y + d[1];
+                
                 if (nx >= startX && nx < endX && ny >= startY && ny < endY) {
+                    let nextLvl = lvl - decay;
                     
-                    // Solid blocks block light more than air
-                    let nextIntensity = intensity - dropoff;
-                    if (world[nx][ny] !== BLOCKS.AIR && world[nx][ny] !== BLOCKS.TORCH && world[nx][ny] !== BLOCKS.LEAVES) {
-                        nextIntensity -= 0.2; // Solid blocks darken fast
+                    // Blocks reduce light much faster
+                    const block = world[nx][ny];
+                    if (block !== BLOCKS.AIR && block !== BLOCKS.TORCH && block !== BLOCKS.LEAVES) {
+                        nextLvl -= 0.3; 
                     }
-                    
-                    if (nextIntensity > lightMap[nx][ny]) {
-                        lightMap[nx][ny] = nextIntensity;
-                        queue.push({x: nx, y: ny, intensity: nextIntensity});
+
+                    if (nextLvl > lightMap[nx][ny]) {
+                        lightMap[nx][ny] = nextLvl;
+                        queue.push({x: nx, y: ny, lvl: nextLvl});
                     }
                 }
             }
         }
     }
 
-    // --- RENDER ---
+    // --- DRAWING ---
     function draw() {
-        // Sky Gradient
+        // Sky
         const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
         grad.addColorStop(0, '#87CEEB');
         grad.addColorStop(1, '#E0F7FA');
@@ -396,50 +451,49 @@
                 const py = y * TILE_SIZE;
                 const block = world[x][y];
                 const wall = walls[x][y];
-                const light = Math.min(1, Math.max(0.05, lightMap[x][y] || 0));
+                let light = lightMap[x][y];
 
-                // 1. Draw Background Wall (Darkened)
+                // Draw Background Wall
                 if (wall !== BLOCKS.AIR && block === BLOCKS.AIR) {
                     if (TEXTURES[wall]) {
                         ctx.drawImage(TEXTURES[wall], px, py);
-                        // Darken walls significantly
-                        ctx.fillStyle = 'rgba(0,0,0,0.5)'; 
+                        ctx.fillStyle = 'rgba(0,0,0,0.5)'; // Darken wall
                         ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
                     }
                 }
 
-                // 2. Draw Foreground Block
+                // Draw Block
                 if (block !== BLOCKS.AIR) {
-                    if (TEXTURES[block]) {
-                        ctx.drawImage(TEXTURES[block], px, py);
-                    }
+                    if (TEXTURES[block]) ctx.drawImage(TEXTURES[block], px, py);
                 }
 
-                // 3. Apply Lighting (Draw black overlay with variable alpha)
-                // Alpha 0 = Bright, Alpha 1 = Pitch Black
-                ctx.fillStyle = `rgba(0,0,0,${1 - light})`;
-                ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+                // Apply Lighting Overlay
+                // We clamp the light between 0.05 (dark) and 1.0 (bright)
+                light = Math.max(0.05, Math.min(1.0, light));
+                const shadowStrength = 1 - light;
+                
+                if (shadowStrength > 0) {
+                    ctx.fillStyle = `rgba(0,0,0,${shadowStrength})`;
+                    ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+                }
             }
         }
 
-        // Draw Player
-        ctx.fillStyle = '#FFCC80';
-        ctx.fillRect(player.x, player.y, player.width, 10); // Head
-        ctx.fillStyle = '#B71C1C';
-        ctx.fillRect(player.x, player.y + 10, player.width, 26); // Body
-        ctx.fillStyle = '#1A237E';
-        ctx.fillRect(player.x, player.y + 36, player.width, 14); // Legs
-        
-        // Selection Box
+        // Player
+        ctx.fillStyle = '#FFCC80'; ctx.fillRect(player.x, player.y, player.width, 10);
+        ctx.fillStyle = '#B71C1C'; ctx.fillRect(player.x, player.y + 10, player.width, 24);
+        ctx.fillStyle = '#1A237E'; ctx.fillRect(player.x, player.y + 34, player.width, 14);
+
+        // Selection
         const mx = Math.floor((mouse.x + camera.x) / TILE_SIZE);
         const my = Math.floor((mouse.y + camera.y) / TILE_SIZE);
-        ctx.strokeStyle = 'white';
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = 'white'; ctx.lineWidth = 2;
         ctx.strokeRect(mx * TILE_SIZE, my * TILE_SIZE, TILE_SIZE, TILE_SIZE);
 
         ctx.restore();
     }
 
+    // --- INPUT ---
     function handleKey(e, state) {
         if (e.code === 'KeyD') keys.right = state;
         if (e.code === 'KeyA') keys.left = state;
@@ -458,22 +512,20 @@
         const mx = Math.floor((mouse.x + camera.x) / TILE_SIZE);
         const my = Math.floor((mouse.y + camera.y) / TILE_SIZE);
         
+        // Distance check
         const dx = (mx * TILE_SIZE + TILE_SIZE/2) - (player.x + player.width/2);
         const dy = (my * TILE_SIZE + TILE_SIZE/2) - (player.y + player.height/2);
-        if (dx*dx + dy*dy > 25000) return; // Range check
+        if (dx*dx + dy*dy > 25000) return;
 
         if (mx < 0 || mx >= CHUNK_WIDTH || my < 0 || my >= CHUNK_HEIGHT) return;
 
         if (e.button === 0) { // Mine
             if (world[mx][my] !== BLOCKS.BEDROCK) world[mx][my] = BLOCKS.AIR;
         } else if (e.button === 2) { // Place
-            // Collision check for placement
             const pRect = {l: player.x, r: player.x+player.width, t: player.y, b: player.y+player.height};
             const bRect = {l: mx*TILE_SIZE, r: mx*TILE_SIZE+TILE_SIZE, t: my*TILE_SIZE, b: my*TILE_SIZE+TILE_SIZE};
-            
             const colliding = !(pRect.r < bRect.l || pRect.l > bRect.r || pRect.b < bRect.t || pRect.t > bRect.b);
             
-            // Allow placing Torches (non-solid) inside player, but not solid blocks
             if (!colliding || selectedBlock === BLOCKS.TORCH) {
                 if (world[mx][my] === BLOCKS.AIR) world[mx][my] = selectedBlock;
             }
@@ -487,6 +539,7 @@
     }
 
     init();
+
 </script>
 </body>
 </html>
