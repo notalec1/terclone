@@ -2,70 +2,39 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>JS Terraria - v3</title>
+    <title>JS Terraria - Debug Mode</title>
     <style>
         body {
             margin: 0;
             overflow: hidden;
-            background-color: #000;
-            font-family: 'Segoe UI', sans-serif;
+            background-color: #222; /* Dark grey so we can see canvas boundaries */
+            font-family: 'Consolas', 'Courier New', monospace;
             user-select: none;
         }
         canvas { display: block; }
 
-        /* --- UI: HELP BUTTON & CARD --- */
-        #info-toggle {
+        /* UI Layer */
+        #ui-layer {
             position: absolute;
-            top: 10px;
-            left: 10px;
-            width: 40px;
-            height: 40px;
-            background: rgba(0, 0, 0, 0.6);
-            border: 2px solid #fff;
-            color: #fff;
-            border-radius: 50%;
-            font-size: 24px;
-            font-weight: bold;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            cursor: pointer;
-            z-index: 100;
-            transition: 0.2s;
-        }
-        #info-toggle:hover {
-            background: #444;
-            transform: scale(1.1);
-        }
-
-        #info-card {
-            position: absolute;
-            top: 60px;
-            left: 10px;
-            width: 280px;
-            background: rgba(0, 0, 0, 0.85);
+            top: 10px; left: 10px;
             color: white;
-            padding: 15px;
-            border-radius: 8px;
-            border: 1px solid #555;
-            display: none; /* Hidden by default */
-            z-index: 99;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            pointer-events: none;
+            text-shadow: 1px 1px 0 #000;
         }
-        #info-card h2 { margin-top: 0; color: #ffd700; font-size: 18px; }
-        #info-card p { font-size: 14px; line-height: 1.4; color: #ddd; }
-        #info-card kbd {
-            background: #333;
-            padding: 2px 6px;
-            border-radius: 4px;
-            border: 1px solid #555;
-            font-family: monospace;
-            font-weight: bold;
-            color: #fff;
-        }
-        #info-card.visible { display: block; }
 
-        /* --- TOOLBAR --- */
+        /* Debug Box */
+        #debug-stats {
+            position: absolute;
+            top: 10px; right: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #0f0;
+            padding: 10px;
+            border: 1px solid #0f0;
+            font-size: 12px;
+            display: none; /* Hidden by default */
+        }
+
+        /* Toolbar */
         #toolbar {
             position: absolute;
             bottom: 20px; left: 50%;
@@ -83,7 +52,6 @@
             background-color: #222;
             cursor: pointer;
             display: flex; justify-content: center; align-items: center;
-            transition: 0.1s;
             position: relative;
         }
         .slot.active {
@@ -92,101 +60,64 @@
             transform: translateY(-5px);
         }
         .slot canvas { width: 32px; height: 32px; }
-        .slot-num {
-            position: absolute; bottom: 2px; right: 2px;
-            font-size: 10px; color: #aaa;
-        }
+        .slot-num { position: absolute; bottom: 2px; right: 2px; font-size: 10px; color: #aaa; }
     </style>
 </head>
 <body>
 
-    <!-- Toggle Button -->
-    <div id="info-toggle" onclick="toggleInfo()">?</div>
+    <div id="ui-layer">
+        <h1>Terraria v4 (Debug)</h1>
+        <p><strong>L</strong>: Toggle Lighting (Try this if screen is black)</p>
+        <p><strong>0</strong>: Toggle Debug Info</p>
+        <p>WASD to Move | Left/Right Click to Mine/Place</p>
+    </div>
 
-    <!-- Expandable Info Card -->
-    <div id="info-card">
-        <h2>Controls & Help</h2>
-        <p><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> to Move & Jump</p>
-        <p><kbd>Left Click</kbd> to Mine blocks</p>
-        <p><kbd>Right Click</kbd> to Place blocks</p>
-        <p><kbd>1</kbd> - <kbd>6</kbd> to Select items</p>
-        <hr style="border-color: #444;">
-        <p><strong>Tips:</strong></p>
-        <p>• Use Torches (<kbd>6</kbd>) to explore caves.</p>
-        <p>• Mining removes the foreground block.</p>
-        <p>• Darker background walls means you are underground.</p>
+    <div id="debug-stats">
+        <div><strong>DEBUG MODE</strong></div>
+        <div id="db-fps">FPS: 0</div>
+        <div id="db-pos">Pos: 0, 0</div>
+        <div id="db-mouse">Mouse: 0, 0</div>
+        <div id="db-block">Block: -</div>
+        <div id="db-light">Light: -</div>
     </div>
 
     <div id="toolbar"></div>
     <canvas id="gameCanvas"></canvas>
 
 <script>
-    // --- UI LOGIC ---
-    function toggleInfo() {
-        document.getElementById('info-card').classList.toggle('visible');
-    }
-
-    // --- CONFIGURATION ---
+    // --- SETTINGS ---
     const TILE_SIZE = 32;
     const CHUNK_WIDTH = 120;
     const CHUNK_HEIGHT = 80;
     const GRAVITY = 0.5;
-    const PLAYER_SPEED = 5;
-    const JUMP_FORCE = -9;
+    
+    // --- TOGGLES ---
+    let enableLighting = true; // Press L to toggle
+    let showDebug = false;     // Press 0 to toggle
 
     // --- BLOCKS ---
-    const BLOCKS = {
-        AIR: 0,
-        DIRT: 1,
-        GRASS: 2,
-        STONE: 3,
-        WOOD: 4,
-        LEAVES: 5,
-        TORCH: 6,
-        BEDROCK: 99
-    };
+    const BLOCKS = { AIR: 0, DIRT: 1, GRASS: 2, STONE: 3, WOOD: 4, LEAVES: 5, TORCH: 6, BEDROCK: 99 };
 
-    // --- ASSETS (Procedural Textures) ---
+    // --- ASSETS ---
     const TEXTURES = {};
-    
     function createTexture(type, color) {
         const c = document.createElement('canvas');
         c.width = TILE_SIZE; c.height = TILE_SIZE;
         const ctx = c.getContext('2d');
-        
-        ctx.fillStyle = color;
-        ctx.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
-        
-        // Noise
-        for(let i=0; i<40; i++) {
-            ctx.fillStyle = Math.random() > 0.5 ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
-            const s = Math.random() * 4 + 2;
-            ctx.fillRect(Math.random()*TILE_SIZE, Math.random()*TILE_SIZE, s, s);
+        ctx.fillStyle = color; ctx.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
+        // Simple noise
+        for(let i=0; i<20; i++) {
+            ctx.fillStyle = Math.random()>0.5 ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
+            ctx.fillRect(Math.random()*32, Math.random()*32, 4, 4);
         }
-
-        if(type === 'grass') {
-            ctx.fillStyle = '#4caf50';
-            ctx.fillRect(0,0,TILE_SIZE, 8);
-            for(let i=0; i<10; i++) ctx.fillRect(Math.random()*28, 6, 4, 4);
-        }
-        if(type === 'wood') {
-            ctx.fillStyle = 'rgba(0,0,0,0.1)';
-            ctx.fillRect(4, 0, 4, 32); ctx.fillRect(14, 0, 4, 32); ctx.fillRect(24, 0, 4, 32);
-        }
-        if(type === 'leaves') {
-            ctx.fillStyle = '#2e7d32';
-            ctx.fillRect(0,0,32,32);
-            for(let i=0; i<20; i++) ctx.clearRect(Math.random()*30, Math.random()*30, 4, 4);
-        }
-        if(type === 'torch') {
-            ctx.clearRect(0,0,32,32);
-            ctx.fillStyle = '#8B4513'; ctx.fillRect(14, 10, 4, 10);
-            ctx.fillStyle = '#FF4500'; ctx.fillRect(12, 6, 8, 8);
-            ctx.fillStyle = '#FFD700'; ctx.fillRect(14, 8, 4, 4);
+        if(type==='grass'){ ctx.fillStyle='#4caf50'; ctx.fillRect(0,0,32,6); }
+        if(type==='torch'){ 
+            ctx.clearRect(0,0,32,32); 
+            ctx.fillStyle='#8B4513'; ctx.fillRect(14,10,4,10);
+            ctx.fillStyle='#FFD700'; ctx.fillRect(13,6,6,6);
         }
         return c;
     }
-
     function initTextures() {
         TEXTURES[BLOCKS.DIRT] = createTexture('dirt', '#5d4037');
         TEXTURES[BLOCKS.GRASS] = createTexture('grass', '#5d4037');
@@ -197,20 +128,16 @@
         TEXTURES[BLOCKS.TORCH] = createTexture('torch', '#fff');
     }
 
-    // --- GAME STATE ---
+    // --- STATE ---
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
     
-    let world = [];
-    let walls = []; 
-    let lightMap = [];
-    
+    let world = [], walls = [], lightMap = [];
     let camera = { x: 0, y: 0 };
     let mouse = { x: 0, y: 0 };
     let selectedBlock = BLOCKS.DIRT;
-    
-    const player = { x: 0, y: 0, width: 20, height: 48, vx: 0, vy: 0, grounded: false };
-    const keys = { left: false, right: false, up: false };
+    const player = { x: 0, y: 0, w: 20, h: 48, vx: 0, vy: 0, grounded: false };
+    const keys = { l: false, r: false, u: false };
 
     // --- INIT ---
     function init() {
@@ -219,20 +146,26 @@
         generateWorld();
         createToolbar();
         
-        player.x = (CHUNK_WIDTH * TILE_SIZE) / 2;
-        player.y = 10 * TILE_SIZE;
-        
+        // Safety: Place player 10 blocks above the generated ground
+        const midX = Math.floor(CHUNK_WIDTH / 2);
+        // Find ground
+        let groundY = 0;
+        for(let y=0; y<CHUNK_HEIGHT; y++) {
+            if(world[midX][y] !== BLOCKS.AIR) {
+                groundY = y;
+                break;
+            }
+        }
+        player.x = midX * TILE_SIZE;
+        player.y = (groundY - 5) * TILE_SIZE; // 5 blocks above ground
+
         window.addEventListener('resize', resize);
-        window.addEventListener('keydown', e => handleKey(e, true));
-        window.addEventListener('keyup', e => handleKey(e, false));
-        window.addEventListener('mousemove', e => {
-            mouse.x = e.clientX;
-            mouse.y = e.clientY;
-        });
-        window.addEventListener('mousedown', handleMouseDown);
+        window.addEventListener('keydown', onKeyDown);
+        window.addEventListener('keyup', onKeyUp);
+        window.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
+        window.addEventListener('mousedown', onMouseDown);
         window.addEventListener('contextmenu', e => e.preventDefault());
-        
-        // Initial lighting pass
+
         updateLighting(true);
         loop();
     }
@@ -243,303 +176,255 @@
         ctx.imageSmoothingEnabled = false;
     }
 
-    function createToolbar() {
-        const toolbar = document.getElementById('toolbar');
-        const items = [BLOCKS.DIRT, BLOCKS.GRASS, BLOCKS.STONE, BLOCKS.WOOD, BLOCKS.LEAVES, BLOCKS.TORCH];
-        
-        items.forEach((id, i) => {
-            const slot = document.createElement('div');
-            slot.className = i===0 ? 'slot active' : 'slot';
-            slot.onclick = () => {
-                document.querySelectorAll('.slot').forEach(s => s.classList.remove('active'));
-                slot.classList.add('active');
-                selectedBlock = id;
-            };
-            
-            const icon = document.createElement('canvas');
-            icon.width = 32; icon.height = 32;
-            icon.getContext('2d').drawImage(TEXTURES[id], 0, 0);
-            
-            const num = document.createElement('span');
-            num.className = 'slot-num';
-            num.innerText = i + 1;
-            
-            slot.appendChild(icon);
-            slot.appendChild(num);
-            toolbar.appendChild(slot);
-        });
-    }
-
-    // --- GENERATION ---
     function generateWorld() {
-        const groundLevel = 25;
+        const surfaceBase = 30;
         for (let x = 0; x < CHUNK_WIDTH; x++) {
             world[x] = []; walls[x] = []; lightMap[x] = [];
-            const surfaceY = groundLevel + Math.floor(Math.sin(x/6)*4) + Math.floor(Math.cos(x/20)*6);
-            
+            const surfaceY = surfaceBase + Math.floor(Math.sin(x/8)*5);
+
             for (let y = 0; y < CHUNK_HEIGHT; y++) {
-                // Initialize Light: 1.0 for sky/air, 0.0 for underground
-                lightMap[x][y] = (y < surfaceY) ? 1.0 : 0.0;
+                lightMap[x][y] = 1.0; // Default to bright to prevent black screen on load
                 
                 // Walls
-                walls[x][y] = (y > surfaceY + 1) ? BLOCKS.DIRT : BLOCKS.AIR;
-                if (y > surfaceY + 10) walls[x][y] = BLOCKS.STONE;
-
+                walls[x][y] = (y > surfaceY + 2) ? BLOCKS.DIRT : BLOCKS.AIR;
+                
                 // Blocks
                 if (y >= CHUNK_HEIGHT - 2) world[x][y] = BLOCKS.BEDROCK;
                 else if (y >= surfaceY) {
                     if (y === surfaceY) world[x][y] = BLOCKS.GRASS;
-                    else if (y > surfaceY + 8 && Math.random() > 0.08) world[x][y] = BLOCKS.STONE;
-                    else if (Math.random() > 0.02) world[x][y] = BLOCKS.DIRT;
-                    else world[x][y] = BLOCKS.AIR;
+                    else if (y > surfaceY + 10) world[x][y] = BLOCKS.STONE;
+                    else world[x][y] = BLOCKS.DIRT;
                 } else {
                     world[x][y] = BLOCKS.AIR;
-                }
-            }
-            // Simple Trees
-            if (x > 5 && x < CHUNK_WIDTH-5 && world[x][surfaceY] === BLOCKS.GRASS && Math.random() < 0.1) {
-                const h = 4 + Math.floor(Math.random()*4);
-                for(let i=1; i<=h; i++) world[x][surfaceY-i] = BLOCKS.WOOD;
-                for(let lx=x-2; lx<=x+2; lx++) {
-                    for(let ly=surfaceY-h-2; ly<=surfaceY-h; ly++) {
-                         if(Math.abs(lx-x)+Math.abs(ly-(surfaceY-h))<4) world[lx][ly] = BLOCKS.LEAVES;
-                    }
                 }
             }
         }
     }
 
     // --- GAME LOOP ---
+    let lastTime = 0;
+    function loop(time) {
+        const dt = time - lastTime;
+        lastTime = time;
+
+        update();
+        draw();
+        
+        if(showDebug) updateDebugInfo(dt);
+        requestAnimationFrame(loop);
+    }
+
     function update() {
-        // Horizontal
-        if (keys.right) player.vx += 0.5;
-        if (keys.left) player.vx -= 0.5;
+        if (keys.r) player.vx += 0.5;
+        if (keys.l) player.vx -= 0.5;
         player.vx *= 0.9;
-        
-        // Vertical
         player.vy = Math.min(player.vy + GRAVITY, 12);
-        
+
         movePlayer(player.vx, 0);
         movePlayer(0, player.vy);
 
-        // Camera
+        // Camera Follow
         camera.x = player.x - canvas.width/2;
         camera.y = player.y - canvas.height/2;
-        
-        // Clamp Camera
         camera.x = Math.max(0, Math.min(camera.x, CHUNK_WIDTH*TILE_SIZE - canvas.width));
         camera.y = Math.max(0, Math.min(camera.y, CHUNK_HEIGHT*TILE_SIZE - canvas.height));
-
-        updateLighting(false);
+        
+        if(enableLighting) updateLighting(false);
     }
 
     function movePlayer(vx, vy) {
-        player.x += vx;
-        player.y += vy;
-        
-        const startX = Math.floor(player.x / TILE_SIZE);
-        const endX = Math.floor((player.x + player.width) / TILE_SIZE);
-        const startY = Math.floor(player.y / TILE_SIZE);
-        const endY = Math.floor((player.y + player.height) / TILE_SIZE);
+        player.x += vx; player.y += vy;
+        const sx = Math.floor(player.x/TILE_SIZE), ex = Math.floor((player.x+player.w)/TILE_SIZE);
+        const sy = Math.floor(player.y/TILE_SIZE), ey = Math.floor((player.y+player.h)/TILE_SIZE);
 
-        for (let y = startY; y <= endY; y++) {
-            for (let x = startX; x <= endX; x++) {
-                if (x < 0 || x >= CHUNK_WIDTH || y < 0 || y >= CHUNK_HEIGHT) continue;
-                const block = world[x][y];
-                if (block !== BLOCKS.AIR && block !== BLOCKS.LEAVES && block !== BLOCKS.TORCH) {
-                    if (vx > 0) player.x = x * TILE_SIZE - player.width - 0.1;
-                    else if (vx < 0) player.x = (x + 1) * TILE_SIZE + 0.1;
-                    else if (vy > 0) { player.y = y * TILE_SIZE - player.height - 0.1; player.grounded = true; player.vy = 0; }
-                    else if (vy < 0) { player.y = (y + 1) * TILE_SIZE + 0.1; player.vy = 0; }
+        for(let y=sy; y<=ey; y++) {
+            for(let x=sx; x<=ex; x++) {
+                if(x>=0 && x<CHUNK_WIDTH && y>=0 && y<CHUNK_HEIGHT) {
+                    const b = world[x][y];
+                    if(b !== BLOCKS.AIR && b !== BLOCKS.TORCH && b !== BLOCKS.LEAVES) {
+                        if(vx>0) player.x = x*TILE_SIZE - player.w - 0.1;
+                        else if(vx<0) player.x = (x+1)*TILE_SIZE + 0.1;
+                        else if(vy>0) { player.y = y*TILE_SIZE - player.h - 0.1; player.grounded=true; player.vy=0; }
+                        else if(vy<0) { player.y = (y+1)*TILE_SIZE + 0.1; player.vy=0; }
+                    }
                 }
             }
         }
     }
 
-    // --- LIGHTING SYSTEM (FIXED) ---
-    function updateLighting(forceAll) {
-        // If forceAll is true (startup), calc whole world. Otherwise only screen.
-        let startX = forceAll ? 0 : Math.floor(camera.x / TILE_SIZE) - 5;
-        let endX = forceAll ? CHUNK_WIDTH : startX + Math.floor(canvas.width / TILE_SIZE) + 10;
-        let startY = forceAll ? 0 : Math.floor(camera.y / TILE_SIZE) - 5;
-        let endY = forceAll ? CHUNK_HEIGHT : startY + Math.floor(canvas.height / TILE_SIZE) + 10;
-        
-        // Bounds checking
-        startX = Math.max(0, startX);
-        endX = Math.min(CHUNK_WIDTH, endX);
-        startY = Math.max(0, startY);
-        endY = Math.min(CHUNK_HEIGHT, endY);
+    // --- LIGHTING ---
+    function updateLighting(force) {
+        // Bounds
+        let sx = force ? 0 : Math.floor(camera.x/TILE_SIZE)-5;
+        let ex = force ? CHUNK_WIDTH : sx + Math.floor(canvas.width/TILE_SIZE)+10;
+        let sy = force ? 0 : Math.floor(camera.y/TILE_SIZE)-5;
+        let ey = force ? CHUNK_HEIGHT : sy + Math.floor(canvas.height/TILE_SIZE)+10;
+
+        sx = Math.max(0, sx); ex = Math.min(CHUNK_WIDTH, ex);
+        sy = Math.max(0, sy); ey = Math.min(CHUNK_HEIGHT, ey);
 
         let queue = [];
 
-        // 1. Identify Light Sources
-        // We iterate the X range, but for Y we must check higher to catch sunlight
-        for (let x = startX; x < endX; x++) {
-            // Find Topmost Sunlight Source for this column
-            // (In a real game we trace rays, here we cheat: if background is AIR, it's sunny)
-            for (let y = startY; y < endY; y++) {
-                // Reset light for this frame
-                lightMap[x][y] = 0; 
-
-                // Is it open air background? (Sunlight)
-                if (walls[x][y] === BLOCKS.AIR) {
-                    lightMap[x][y] = 1.0;
-                    queue.push({x, y, lvl: 1.0});
-                }
-                // Is it a Torch?
-                else if (world[x][y] === BLOCKS.TORCH) {
-                    lightMap[x][y] = 1.2;
-                    queue.push({x, y, lvl: 1.2});
-                }
+        for(let x=sx; x<ex; x++) {
+            for(let y=sy; y<ey; y++) {
+                lightMap[x][y] = 0; // Reset
+                // Sources
+                if(walls[x][y] === BLOCKS.AIR) { lightMap[x][y] = 1.0; queue.push({x,y,l:1}); }
+                else if(world[x][y] === BLOCKS.TORCH) { lightMap[x][y] = 1.2; queue.push({x,y,l:1.2}); }
             }
         }
 
-        // 2. BFS Flood Fill
         let head = 0;
-        const dirs = [[0,1], [0,-1], [1,0], [-1,0]];
-        
+        const dirs = [[0,1],[0,-1],[1,0],[-1,0]];
         while(head < queue.length) {
-            const {x, y, lvl} = queue[head++];
-            if (lvl <= 0) continue;
-
-            const decay = 0.1; // Light falls off by 0.1 per block
-
-            for (let d of dirs) {
-                const nx = x + d[0];
-                const ny = y + d[1];
-                
-                if (nx >= startX && nx < endX && ny >= startY && ny < endY) {
-                    let nextLvl = lvl - decay;
+            const {x, y, l} = queue[head++];
+            if(l <= 0) continue;
+            
+            for(let d of dirs) {
+                const nx=x+d[0], ny=y+d[1];
+                if(nx>=sx && nx<ex && ny>=sy && ny<ey) {
+                    let nl = l - 0.1; // decay
+                    if(world[nx][ny] !== BLOCKS.AIR && world[nx][ny] !== BLOCKS.TORCH) nl -= 0.3; // block decay
                     
-                    // Blocks reduce light much faster
-                    const block = world[nx][ny];
-                    if (block !== BLOCKS.AIR && block !== BLOCKS.TORCH && block !== BLOCKS.LEAVES) {
-                        nextLvl -= 0.3; 
-                    }
-
-                    if (nextLvl > lightMap[nx][ny]) {
-                        lightMap[nx][ny] = nextLvl;
-                        queue.push({x: nx, y: ny, lvl: nextLvl});
+                    if(nl > lightMap[nx][ny]) {
+                        lightMap[nx][ny] = nl;
+                        queue.push({x:nx, y:ny, l:nl});
                     }
                 }
             }
         }
     }
 
-    // --- DRAWING ---
+    // --- DRAW ---
     function draw() {
         // Sky
-        const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
-        grad.addColorStop(0, '#87CEEB');
-        grad.addColorStop(1, '#E0F7FA');
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#87CEEB';
+        ctx.fillRect(0,0,canvas.width, canvas.height);
 
         ctx.save();
         ctx.translate(-Math.floor(camera.x), -Math.floor(camera.y));
 
-        const startX = Math.floor(camera.x / TILE_SIZE);
-        const endX = startX + (canvas.width / TILE_SIZE) + 1;
-        const startY = Math.floor(camera.y / TILE_SIZE);
-        const endY = startY + (canvas.height / TILE_SIZE) + 1;
+        const sx = Math.floor(camera.x/TILE_SIZE);
+        const ex = sx + (canvas.width/TILE_SIZE) + 1;
+        const sy = Math.floor(camera.y/TILE_SIZE);
+        const ey = sy + (canvas.height/TILE_SIZE) + 1;
 
-        for (let x = startX; x <= endX; x++) {
-            for (let y = startY; y <= endY; y++) {
-                if (x < 0 || x >= CHUNK_WIDTH || y < 0 || y >= CHUNK_HEIGHT) continue;
+        for(let x=sx; x<=ex; x++) {
+            for(let y=sy; y<=ey; y++) {
+                if(x<0||x>=CHUNK_WIDTH||y<0||y>=CHUNK_HEIGHT) continue;
+
+                const px = x*TILE_SIZE, py = y*TILE_SIZE;
+                const b = world[x][y];
+                const w = walls[x][y];
                 
-                const px = x * TILE_SIZE;
-                const py = y * TILE_SIZE;
-                const block = world[x][y];
-                const wall = walls[x][y];
-                let light = lightMap[x][y];
-
-                // Draw Background Wall
-                if (wall !== BLOCKS.AIR && block === BLOCKS.AIR) {
-                    if (TEXTURES[wall]) {
-                        ctx.drawImage(TEXTURES[wall], px, py);
-                        ctx.fillStyle = 'rgba(0,0,0,0.5)'; // Darken wall
-                        ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+                // Draw Wall
+                if(w !== BLOCKS.AIR && b === BLOCKS.AIR) {
+                    if(TEXTURES[w]) {
+                        ctx.drawImage(TEXTURES[w], px, py);
+                        ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(px,py,TILE_SIZE,TILE_SIZE);
                     }
                 }
 
                 // Draw Block
-                if (block !== BLOCKS.AIR) {
-                    if (TEXTURES[block]) ctx.drawImage(TEXTURES[block], px, py);
+                if(b !== BLOCKS.AIR) {
+                    if(TEXTURES[b]) ctx.drawImage(TEXTURES[b], px, py);
+                }
+                
+                // Lighting Overlay
+                if(enableLighting) {
+                    let l = lightMap[x][y] || 0;
+                    l = Math.max(0.05, Math.min(1.0, l));
+                    ctx.fillStyle = `rgba(0,0,0,${1-l})`;
+                    ctx.fillRect(px,py,TILE_SIZE,TILE_SIZE);
                 }
 
-                // Apply Lighting Overlay
-                // We clamp the light between 0.05 (dark) and 1.0 (bright)
-                light = Math.max(0.05, Math.min(1.0, light));
-                const shadowStrength = 1 - light;
-                
-                if (shadowStrength > 0) {
-                    ctx.fillStyle = `rgba(0,0,0,${shadowStrength})`;
-                    ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+                // DEBUG: Show Grid
+                if(showDebug) {
+                    ctx.strokeStyle = '#333';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(px,py,TILE_SIZE,TILE_SIZE);
                 }
             }
         }
 
         // Player
-        ctx.fillStyle = '#FFCC80'; ctx.fillRect(player.x, player.y, player.width, 10);
-        ctx.fillStyle = '#B71C1C'; ctx.fillRect(player.x, player.y + 10, player.width, 24);
-        ctx.fillStyle = '#1A237E'; ctx.fillRect(player.x, player.y + 34, player.width, 14);
+        ctx.fillStyle = '#FFCC80'; ctx.fillRect(player.x, player.y, player.w, 10);
+        ctx.fillStyle = '#F44336'; ctx.fillRect(player.x, player.y+10, player.w, 24);
+        ctx.fillStyle = '#1E88E5'; ctx.fillRect(player.x, player.y+34, player.w, 14);
 
         // Selection
-        const mx = Math.floor((mouse.x + camera.x) / TILE_SIZE);
-        const my = Math.floor((mouse.y + camera.y) / TILE_SIZE);
+        const mx = Math.floor((mouse.x+camera.x)/TILE_SIZE);
+        const my = Math.floor((mouse.y+camera.y)/TILE_SIZE);
         ctx.strokeStyle = 'white'; ctx.lineWidth = 2;
-        ctx.strokeRect(mx * TILE_SIZE, my * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        ctx.strokeRect(mx*TILE_SIZE, my*TILE_SIZE, TILE_SIZE, TILE_SIZE);
 
         ctx.restore();
     }
 
-    // --- INPUT ---
-    function handleKey(e, state) {
-        if (e.code === 'KeyD') keys.right = state;
-        if (e.code === 'KeyA') keys.left = state;
-        if ((e.code === 'KeyW' || e.code === 'Space') && state && player.grounded) {
-            player.vy = JUMP_FORCE;
-            player.grounded = false;
+    // --- DEBUG INFO ---
+    function updateDebugInfo(dt) {
+        const mx = Math.floor((mouse.x+camera.x)/TILE_SIZE);
+        const my = Math.floor((mouse.y+camera.y)/TILE_SIZE);
+        
+        let blockVal = 'Void', lightVal = 'Void';
+        if(mx>=0 && mx<CHUNK_WIDTH && my>=0 && my<CHUNK_HEIGHT) {
+            blockVal = world[mx][my];
+            lightVal = lightMap[mx][my] ? lightMap[mx][my].toFixed(2) : '0.00';
         }
-        if (state && e.key >= '1' && e.key <= '6') {
-            const index = parseInt(e.key) - 1;
-            const slots = document.querySelectorAll('.slot');
-            if(slots[index]) slots[index].click();
-        }
+
+        document.getElementById('db-fps').innerText = `FPS: ${Math.round(1000/dt)}`;
+        document.getElementById('db-pos').innerText = `Player: ${Math.round(player.x)}, ${Math.round(player.y)}`;
+        document.getElementById('db-mouse').innerText = `Tile: ${mx}, ${my}`;
+        document.getElementById('db-block').innerText = `Block ID: ${blockVal}`;
+        document.getElementById('db-light').innerText = `Light: ${lightVal}`;
     }
 
-    function handleMouseDown(e) {
-        const mx = Math.floor((mouse.x + camera.x) / TILE_SIZE);
-        const my = Math.floor((mouse.y + camera.y) / TILE_SIZE);
+    // --- INPUT ---
+    function onKeyDown(e) {
+        if(e.code==='KeyD') keys.r=true;
+        if(e.code==='KeyA') keys.l=true;
+        if((e.code==='KeyW'||e.code==='Space') && player.grounded) { player.vy = -9; player.grounded=false; }
+        if(e.key==='0') { showDebug = !showDebug; document.getElementById('debug-stats').style.display = showDebug ? 'block' : 'none'; }
+        if(e.code==='KeyL') enableLighting = !enableLighting;
+        if(e.key>='1' && e.key<='6') {
+             const i = parseInt(e.key)-1; 
+             const s = document.querySelectorAll('.slot'); 
+             if(s[i]) s[i].click(); 
+        }
+    }
+    function onKeyUp(e) {
+        if(e.code==='KeyD') keys.r=false;
+        if(e.code==='KeyA') keys.l=false;
+    }
+    function onMouseDown(e) {
+        const mx = Math.floor((mouse.x+camera.x)/TILE_SIZE);
+        const my = Math.floor((mouse.y+camera.y)/TILE_SIZE);
+        if(mx<0 || mx>=CHUNK_WIDTH || my<0 || my>=CHUNK_HEIGHT) return;
         
-        // Distance check
-        const dx = (mx * TILE_SIZE + TILE_SIZE/2) - (player.x + player.width/2);
-        const dy = (my * TILE_SIZE + TILE_SIZE/2) - (player.y + player.height/2);
-        if (dx*dx + dy*dy > 25000) return;
+        const dx = (mx*32+16)-(player.x+10), dy = (my*32+16)-(player.y+24);
+        if(dx*dx+dy*dy > 25000) return;
 
-        if (mx < 0 || mx >= CHUNK_WIDTH || my < 0 || my >= CHUNK_HEIGHT) return;
-
-        if (e.button === 0) { // Mine
-            if (world[mx][my] !== BLOCKS.BEDROCK) world[mx][my] = BLOCKS.AIR;
-        } else if (e.button === 2) { // Place
-            const pRect = {l: player.x, r: player.x+player.width, t: player.y, b: player.y+player.height};
-            const bRect = {l: mx*TILE_SIZE, r: mx*TILE_SIZE+TILE_SIZE, t: my*TILE_SIZE, b: my*TILE_SIZE+TILE_SIZE};
-            const colliding = !(pRect.r < bRect.l || pRect.l > bRect.r || pRect.b < bRect.t || pRect.t > bRect.b);
-            
-            if (!colliding || selectedBlock === BLOCKS.TORCH) {
-                if (world[mx][my] === BLOCKS.AIR) world[mx][my] = selectedBlock;
+        if(e.button===0) { if(world[mx][my]!==99) world[mx][my]=0; }
+        if(e.button===2) {
+            // Place logic
+            const pr={l:player.x,r:player.x+player.w,t:player.y,b:player.y+player.h};
+            const br={l:mx*32,r:mx*32+32,t:my*32,b:my*32+32};
+            if(selectedBlock===BLOCKS.TORCH || !(pr.r>br.l && pr.l<br.r && pr.b>br.t && pr.t<br.b)) {
+                if(world[mx][my]===0) world[mx][my]=selectedBlock;
             }
         }
     }
-
-    function loop() {
-        update();
-        draw();
-        requestAnimationFrame(loop);
+    function createToolbar() {
+        const tb = document.getElementById('toolbar');
+        [1,2,3,4,5,6].forEach((id, i) => {
+            const s = document.createElement('div'); s.className=i===0?'slot active':'slot';
+            s.onclick=()=>{document.querySelectorAll('.slot').forEach(x=>x.classList.remove('active'));s.classList.add('active');selectedBlock=id;};
+            const c = document.createElement('canvas'); c.getContext('2d').drawImage(TEXTURES[id],0,0);
+            s.appendChild(c); tb.appendChild(s);
+        });
     }
 
     init();
-
 </script>
 </body>
 </html>
